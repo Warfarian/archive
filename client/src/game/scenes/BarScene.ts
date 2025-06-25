@@ -7,15 +7,32 @@ export class BarScene extends Scene {
   private currentCharacter: Character
   private dialogueBox?: Phaser.GameObjects.Container
   private currentQuestionIndex = 0
+  private soundEnabled = false
+  private dialogueSoundIndex = 0
 
   constructor() {
     super({ key: 'BarScene' })
     this.currentCharacter = getRandomCharacter()
   }
 
+  init(data: { soundEnabled?: boolean }) {
+    this.soundEnabled = data.soundEnabled || false
+  }
+
   preload() {
     // Load video background
     this.load.video('bar-bg', 'assets/background/cyberpunk-bar-pixel-moewalls-com.mp4')
+    
+    // Load audio files
+    this.load.audio('hover-sound', 'assets/sounds/effects/hover.mp3')
+    this.load.audio('select-sound', 'assets/sounds/effects/select.mp3')
+    this.load.audio('bell-sound', 'assets/sounds/effects/bell.mp3')
+    
+    // Load dialogue sound files
+    this.load.audio('dialogue-long-1', 'assets/sounds/effects/dialogue-long-1.mp3')
+    this.load.audio('dialogue-long-2', 'assets/sounds/effects/dialogue-long-2.mp3')
+    this.load.audio('dialogue-short-1', 'assets/sounds/effects/dialogue-short-1.mp3')
+    this.load.audio('dialogue-short-2', 'assets/sounds/effects/dialogue-short-2.mp3')
     
     // Load all NPC assets
     ALL_CHARACTERS.forEach(character => {
@@ -99,14 +116,52 @@ export class BarScene extends Scene {
     }).setOrigin(0.5).setName('startButton')
     .setInteractive()
     .on('pointerdown', () => {
+      this.playSelectSound()
       this.startCharacterScene()
     })
     .on('pointerover', () => {
+      this.playHoverSound()
       startButton.setColor('#ffff00')
     })
     .on('pointerout', () => {
       startButton.setColor('#ff00ff')
     })
+  }
+
+  private playHoverSound() {
+    if (this.soundEnabled) {
+      this.sound.play('hover-sound', { volume: 0.3 })
+    }
+  }
+
+  private playSelectSound() {
+    if (this.soundEnabled) {
+      this.sound.play('select-sound', { volume: 0.5 })
+    }
+  }
+
+  private playDialogueSound(text: string) {
+    if (!this.soundEnabled) {
+      console.log('Sound disabled, not playing dialogue sound')
+      return
+    }
+    
+    console.log('Playing dialogue sound for:', text.substring(0, 30) + '...')
+    
+    try {
+      // Choose dialogue sound based on text length and alternate between sounds
+      const isLongText = text.length > 50
+      const soundType = isLongText ? 'long' : 'short'
+      const soundNumber = (this.dialogueSoundIndex % 2) + 1
+      const soundKey = `dialogue-${soundType}-${soundNumber}`
+      
+      this.sound.play(soundKey, { volume: 0.6 })
+      this.dialogueSoundIndex++
+      
+      console.log(`Dialogue sound played: ${soundKey}`)
+    } catch (error) {
+      console.error('Error playing dialogue sound:', error)
+    }
   }
 
   private createAllAnimations() {
@@ -147,6 +202,11 @@ export class BarScene extends Scene {
     if (this.isCharacterWalking) return
     
     this.isCharacterWalking = true
+    
+    // Play bell sound when patron arrives
+    if (this.soundEnabled) {
+      this.sound.play('bell-sound', { volume: 0.4 })
+    }
     
     // Hide UI elements
     this.children.getByName('title')?.setVisible(false)
@@ -206,6 +266,9 @@ export class BarScene extends Scene {
   private typewriterText(textObject: Phaser.GameObjects.Text, fullText: string, speed: number = 50) {
     if (!textObject || !fullText) return
     
+    // Play dialogue sound when starting to type
+    this.playDialogueSound(fullText)
+    
     textObject.setText('')
     let currentIndex = 0
     
@@ -250,9 +313,11 @@ export class BarScene extends Scene {
     }).setOrigin(1, 0)
     .setInteractive()
     .on('pointerdown', () => {
+      this.playSelectSound()
       this.showQuestion()
     })
     .on('pointerover', () => {
+      this.playHoverSound()
       continueBtn.setTint(0xff00ff)
       continueBtn.setScale(1.1)
     })
@@ -312,10 +377,12 @@ export class BarScene extends Scene {
     }).setOrigin(1, 0)
     .setInteractive()
     .on('pointerdown', () => {
+      this.playSelectSound()
       this.currentQuestionIndex++
       this.showQuestion()
     })
     .on('pointerover', () => {
+      this.playHoverSound()
       nextBtn.setTint(0x00ffff)
       nextBtn.setScale(1.1)
     })
@@ -361,9 +428,11 @@ export class BarScene extends Scene {
     }).setOrigin(1, 0)
     .setInteractive()
     .on('pointerdown', () => {
+      this.playSelectSound()
       this.characterExit()
     })
     .on('pointerover', () => {
+      this.playHoverSound()
       exitBtn.setTint(0xffff00)
       exitBtn.setScale(1.1)
     })

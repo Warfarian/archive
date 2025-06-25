@@ -9,6 +9,7 @@ export class BarScene extends Scene {
   private currentQuestionIndex = 0
   private soundEnabled = false
   private dialogueSoundIndex = 0
+  private pregeneratedQuestions: Map<string, string> = new Map()
 
   constructor() {
     super({ key: 'BarScene' })
@@ -63,9 +64,18 @@ export class BarScene extends Scene {
     }
   }
 
-  create() {
+  async create() {
     const width = this.game.config.width as number
     const height = this.game.config.height as number
+    
+    // Emit loading start event
+    this.game.events.emit('loadingStart')
+    
+    // Pregenerate questions for all characters
+    await this.pregenerateQuestions()
+    
+    // Emit loading complete event
+    this.game.events.emit('loadingComplete')
     
     // Add cyberpunk bar background
     const bg = this.add.video(width / 2, height / 2, 'bar-bg')
@@ -90,8 +100,8 @@ export class BarScene extends Scene {
     // Create animations for all characters
     this.createAllAnimations()
     
-    // Add title text with pixel art styling
-    const title = this.add.text(960, 200, 'THE ARCHIVE', {
+    // Add title text with pixel art styling - Updated to MEM//ORY
+    const title = this.add.text(960, 200, 'MEM//ORY', {
       fontSize: '72px',
       color: '#00ffff',
       fontFamily: 'monospace',
@@ -109,7 +119,7 @@ export class BarScene extends Scene {
     
     const startButton = this.add.text(960, 600, '> PRESS TO BEGIN <', {
       fontSize: '36px',
-      color: '#ff00ff',
+      color: '#00ff00',
       fontFamily: 'monospace',
       stroke: '#000000',
       strokeThickness: 3
@@ -124,8 +134,42 @@ export class BarScene extends Scene {
       startButton.setColor('#ffff00')
     })
     .on('pointerout', () => {
-      startButton.setColor('#ff00ff')
+      startButton.setColor('#00ff00')
     })
+  }
+
+  private async pregenerateQuestions() {
+    console.log('Pregenerating questions for all characters...')
+    
+    for (const character of ALL_CHARACTERS) {
+      try {
+        const response = await fetch('/api/ai/generate-question', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ character })
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          this.pregeneratedQuestions.set(character.id, data.question)
+          console.log(`Generated question for ${character.name}`)
+        } else {
+          // Use fallback question
+          const fallback = character.dialogue?.questions?.[0] || 
+            "Human, in this world of endless data streams, how do you find meaning in such fleeting moments?"
+          this.pregeneratedQuestions.set(character.id, fallback)
+          console.log(`Using fallback question for ${character.name}`)
+        }
+      } catch (error) {
+        console.error(`Failed to generate question for ${character.name}:`, error)
+        // Use fallback question
+        const fallback = character.dialogue?.questions?.[0] || 
+          "Human, in this world of endless data streams, how do you find meaning in such fleeting moments?"
+        this.pregeneratedQuestions.set(character.id, fallback)
+      }
+    }
+    
+    console.log('Question pregeneration complete!')
   }
 
   private playHoverSound() {
@@ -203,6 +247,9 @@ export class BarScene extends Scene {
     
     this.isCharacterWalking = true
     
+    // Emit game started event on first patron
+    this.game.events.emit('gameStarted')
+    
     // Play bell sound when patron arrives
     if (this.soundEnabled) {
       this.sound.play('bell-sound', { volume: 0.4 })
@@ -245,19 +292,19 @@ export class BarScene extends Scene {
     // Move dialogue box to middle-upper area of screen
     this.dialogueBox = this.add.container(960, 400)
     
-    // Create VA-11 Hall-A inspired dialogue box - clean and minimal
+    // Create VA-11 Hall-A inspired dialogue box with neo-noir colors
     const speechBubble = this.add.graphics()
     
-    // Main dialogue background - dark with transparency like VA-11 Hall-A
-    speechBubble.fillStyle(0x000000, 0.85)
+    // Main dialogue background - deep space navy
+    speechBubble.fillStyle(0x1A1D2E, 0.95)
     speechBubble.fillRect(-480, -120, 960, 200)
     
-    // Simple border - clean lines with purple color
-    speechBubble.lineStyle(3, 0xff00ff, 1)
+    // Cyber aqua blue outline glow
+    speechBubble.lineStyle(3, 0x7DF9FF, 1)
     speechBubble.strokeRect(-480, -120, 960, 200)
     
     // Inner accent line
-    speechBubble.lineStyle(1, 0xaa00aa, 0.8)
+    speechBubble.lineStyle(1, 0x4CFFD9, 0.8)
     speechBubble.strokeRect(-475, -115, 950, 190)
     
     this.dialogueBox.add(speechBubble)
@@ -291,14 +338,14 @@ export class BarScene extends Scene {
     
     const nameText = this.add.text(-450, -100, this.currentCharacter.name, {
       fontSize: '32px',
-      color: '#00ffff',
+      color: '#FF8F00',
       fontFamily: 'Press Start 2P',
       fontStyle: 'bold'
     }).setOrigin(0, 0)
     
     const greetingText = this.add.text(-450, -50, '', {
       fontSize: '20px',
-      color: '#ffffff',
+      color: '#F0F0F0',
       fontFamily: 'Orbitron',
       align: 'left',
       wordWrap: { width: 900 },
@@ -307,7 +354,7 @@ export class BarScene extends Scene {
     
     const continueBtn = this.add.text(400, 50, '▶ CONTINUE', {
       fontSize: '18px',
-      color: '#ffff00',
+      color: '#7DF9FF',
       fontFamily: 'Press Start 2P',
       fontStyle: 'bold'
     }).setOrigin(1, 0)
@@ -318,7 +365,7 @@ export class BarScene extends Scene {
     })
     .on('pointerover', () => {
       this.playHoverSound()
-      continueBtn.setTint(0xff00ff)
+      continueBtn.setTint(0x4CFFD9)
       continueBtn.setScale(1.1)
     })
     .on('pointerout', () => {
@@ -334,70 +381,231 @@ export class BarScene extends Scene {
     console.log(`${this.currentCharacter.name} has arrived and is ready to talk!`)
   }
 
-  private showQuestion() {
-    if (!this.dialogueBox || this.currentQuestionIndex >= this.currentCharacter.dialogue.questions.length) {
-      this.endConversation()
-      return
-    }
+  private async showQuestion() {
+    if (!this.dialogueBox) return
     
     this.dialogueBox.removeAll(true)
     this.createDialogueBox()
     
-    const question = this.currentCharacter.dialogue.questions[this.currentQuestionIndex]
+    // Use pregenerated question instead of generating on-demand
+    const question = this.pregeneratedQuestions.get(this.currentCharacter.id) || 
+      "Human, in this world of endless data streams, how do you find meaning in such fleeting moments?"
     
     const nameText = this.add.text(-450, -100, this.currentCharacter.name, {
       fontSize: '32px',
-      color: '#00ffff',
+      color: '#FF8F00',
       fontFamily: 'Press Start 2P',
       fontStyle: 'bold'
     }).setOrigin(0, 0)
     
     const questionText = this.add.text(-450, -50, '', {
       fontSize: '20px',
-      color: '#ffffff',
+      color: '#F0F0F0',
       fontFamily: 'Orbitron',
       align: 'left',
       wordWrap: { width: 900 },
       lineSpacing: 8
     }).setOrigin(0, 0)
     
-    const responsePrompt = this.add.text(-450, 20, '💭 [Your response will appear here]', {
-      fontSize: '16px',
-      color: '#888888',
-      fontFamily: 'Orbitron',
-      align: 'left',
-      fontStyle: 'italic'
-    }).setOrigin(0, 0)
-    
-    const nextBtn = this.add.text(400, 50, '▶ NEXT', {
-      fontSize: '18px',
-      color: '#00ff00',
-      fontFamily: 'Press Start 2P',
-      fontStyle: 'bold'
-    }).setOrigin(1, 0)
-    .setInteractive()
-    .on('pointerdown', () => {
-      this.playSelectSound()
-      this.currentQuestionIndex++
-      this.showQuestion()
-    })
-    .on('pointerover', () => {
-      this.playHoverSound()
-      nextBtn.setTint(0x00ffff)
-      nextBtn.setScale(1.1)
-    })
-    .on('pointerout', () => {
-      nextBtn.clearTint()
-      nextBtn.setScale(1.0)
-    })
-    
-    this.dialogueBox.add([nameText, questionText, responsePrompt, nextBtn])
+    this.dialogueBox.add([nameText, questionText])
     
     // Start typewriter effect for question
     this.typewriterText(questionText, question, 30)
+    
+    // Add text input box after a delay
+    setTimeout(() => {
+      this.showResponseInput(question)
+    }, question.length * 30 + 500) // Wait for typewriter to finish
   }
 
-  private endConversation() {
+  private showResponseInput(question: string) {
+    // Create HTML input overlay for user response - positioned at bottom of screen
+    const inputContainer = document.createElement('div')
+    inputContainer.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1A1D2E;
+      border: 4px solid #7DF9FF;
+      border-radius: 8px;
+      padding: 20px;
+      z-index: 10000;
+      font-family: 'Orbitron', monospace;
+      color: #F0F0F0;
+      width: 90%;
+      max-width: 800px;
+      box-shadow: 
+        0 0 30px rgba(125, 249, 255, 0.5),
+        inset 0 0 20px rgba(125, 249, 255, 0.1);
+    `
+    
+    const prompt = document.createElement('div')
+    prompt.textContent = 'Your response:'
+    prompt.style.cssText = `
+      margin-bottom: 10px; 
+      color: #F0F0F0; 
+      font-size: 16px;
+      font-weight: bold;
+      text-shadow: 0 0 10px rgba(240, 240, 240, 0.5);
+    `
+    
+    const textarea = document.createElement('textarea')
+    textarea.style.cssText = `
+      width: 100%;
+      height: 80px;
+      background: #262B44;
+      border: 3px solid #7DF9FF;
+      border-radius: 6px;
+      color: #F0F0F0;
+      font-family: 'Orbitron', monospace;
+      font-size: 14px;
+      padding: 10px;
+      resize: none;
+      outline: none;
+      line-height: 1.4;
+      box-shadow: 
+        inset 0 0 10px rgba(125, 249, 255, 0.2),
+        0 0 15px rgba(125, 249, 255, 0.3);
+      transition: all 0.3s ease;
+    `
+    textarea.placeholder = 'Share your human wisdom and perspective...'
+    
+    // Add focus effects
+    textarea.addEventListener('focus', () => {
+      textarea.style.borderColor = '#4CFFD9'
+      textarea.style.boxShadow = `
+        inset 0 0 15px rgba(76, 255, 217, 0.3),
+        0 0 20px rgba(76, 255, 217, 0.4)
+      `
+    })
+    
+    textarea.addEventListener('blur', () => {
+      textarea.style.borderColor = '#7DF9FF'
+      textarea.style.boxShadow = `
+        inset 0 0 10px rgba(125, 249, 255, 0.2),
+        0 0 15px rgba(125, 249, 255, 0.3)
+      `
+    })
+    
+    const buttonContainer = document.createElement('div')
+    buttonContainer.style.cssText = `
+      display: flex; 
+      gap: 15px; 
+      margin-top: 15px; 
+      justify-content: flex-end;
+    `
+    
+    const submitBtn = document.createElement('button')
+    submitBtn.textContent = 'SUBMIT'
+    submitBtn.style.cssText = `
+      background: #00FFC2;
+      border: 2px solid #4CFFD9;
+      border-radius: 4px;
+      color: #000000;
+      padding: 10px 20px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-shadow: none;
+      box-shadow: 0 4px 15px rgba(0, 255, 194, 0.4);
+    `
+    
+    const cancelBtn = document.createElement('button')
+    cancelBtn.textContent = 'CANCEL'
+    cancelBtn.style.cssText = `
+      background: #3A3F5C;
+      border: 2px solid #CCCCCC;
+      border-radius: 4px;
+      color: #CCCCCC;
+      padding: 10px 20px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 15px rgba(58, 63, 92, 0.4);
+    `
+    
+    // Add hover effects
+    submitBtn.addEventListener('mouseenter', () => {
+      submitBtn.style.transform = 'translateY(-2px)'
+      submitBtn.style.boxShadow = '0 6px 20px rgba(76, 255, 217, 0.6)'
+      submitBtn.style.background = '#4CFFD9'
+    })
+    
+    submitBtn.addEventListener('mouseleave', () => {
+      submitBtn.style.transform = 'translateY(0)'
+      submitBtn.style.boxShadow = '0 4px 15px rgba(0, 255, 194, 0.4)'
+      submitBtn.style.background = '#00FFC2'
+    })
+    
+    cancelBtn.addEventListener('mouseenter', () => {
+      cancelBtn.style.transform = 'translateY(-2px)'
+      cancelBtn.style.boxShadow = '0 6px 20px rgba(58, 63, 92, 0.6)'
+    })
+    
+    cancelBtn.addEventListener('mouseleave', () => {
+      cancelBtn.style.transform = 'translateY(0)'
+      cancelBtn.style.boxShadow = '0 4px 15px rgba(58, 63, 92, 0.4)'
+    })
+    
+    // Handle Enter key for submission
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.ctrlKey) {
+        e.preventDefault()
+        submitBtn.click()
+      }
+    })
+    
+    submitBtn.onclick = () => {
+      const response = textarea.value.trim()
+      if (response) {
+        document.body.removeChild(inputContainer)
+        this.evaluateResponse(question, response)
+      }
+    }
+    
+    cancelBtn.onclick = () => {
+      document.body.removeChild(inputContainer)
+      this.endConversation()
+    }
+    
+    buttonContainer.appendChild(cancelBtn)
+    buttonContainer.appendChild(submitBtn)
+    inputContainer.appendChild(prompt)
+    inputContainer.appendChild(textarea)
+    inputContainer.appendChild(buttonContainer)
+    document.body.appendChild(inputContainer)
+    
+    textarea.focus()
+  }
+
+  private async evaluateResponse(question: string, userResponse: string) {
+    try {
+      const response = await fetch('/api/ai/evaluate-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          character: this.currentCharacter,
+          question,
+          userResponse 
+        })
+      })
+      
+      const evaluation = await response.json()
+      this.showEvaluation(evaluation)
+      
+      // Emit score update to parent App component
+      this.game.events.emit('scoreUpdate', evaluation.totalScore)
+      
+    } catch (error) {
+      console.error('Failed to evaluate response:', error)
+      this.endConversation()
+    }
+  }
+
+  private showEvaluation(evaluation: any) {
     if (!this.dialogueBox) return
     
     this.dialogueBox.removeAll(true)
@@ -405,46 +613,50 @@ export class BarScene extends Scene {
     
     const nameText = this.add.text(-450, -100, this.currentCharacter.name, {
       fontSize: '32px',
-      color: '#00ffff',
+      color: '#FF8F00',
       fontFamily: 'Press Start 2P',
       fontStyle: 'bold'
     }).setOrigin(0, 0)
     
-    const farewellText = this.add.text(-450, -50, '', {
+    const reactionText = this.add.text(-450, -50, '', {
       fontSize: '20px',
-      color: '#ffffff',
+      color: '#F0F0F0',
       fontFamily: 'Orbitron',
       align: 'left',
       wordWrap: { width: 900 },
       lineSpacing: 8
     }).setOrigin(0, 0)
     
-    // Add character exit animation
-    const exitBtn = this.add.text(400, 50, '👋 FAREWELL', {
+    const continueBtn = this.add.text(400, 50, '▶ NEXT PATRON', {
       fontSize: '18px',
-      color: '#ff8000',
+      color: '#7DF9FF',
       fontFamily: 'Press Start 2P',
       fontStyle: 'bold'
     }).setOrigin(1, 0)
     .setInteractive()
     .on('pointerdown', () => {
       this.playSelectSound()
-      this.characterExit()
+      this.nextPatron()
     })
     .on('pointerover', () => {
       this.playHoverSound()
-      exitBtn.setTint(0xffff00)
-      exitBtn.setScale(1.1)
+      continueBtn.setTint(0x4CFFD9)
+      continueBtn.setScale(1.1)
     })
     .on('pointerout', () => {
-      exitBtn.clearTint()
-      exitBtn.setScale(1.0)
+      continueBtn.clearTint()
+      continueBtn.setScale(1.0)
     })
     
-    this.dialogueBox.add([nameText, farewellText, exitBtn])
+    this.dialogueBox.add([nameText, reactionText, continueBtn])
     
-    // Start typewriter effect for farewell
-    this.typewriterText(farewellText, 'Thank you for the conversation, human.\nYour perspective is... enlightening.', 25)
+    // Start typewriter effect for character reaction
+    this.typewriterText(reactionText, evaluation.characterReaction, 25)
+  }
+
+  private nextPatron() {
+    // Character exits and new one enters without restarting scene
+    this.characterExit()
   }
 
   private characterExit() {
@@ -464,17 +676,81 @@ export class BarScene extends Scene {
       duration: 3000,
       ease: 'Linear',
       onComplete: () => {
-        this.restartScene()
+        this.prepareNextPatron()
       }
     })
   }
 
-  private restartScene() {
-    this.currentQuestionIndex = 0
-    this.isCharacterWalking = false
+  private prepareNextPatron() {
+    // Clean up current patron
     this.currentNPC?.destroy()
     this.dialogueBox?.destroy()
-    this.currentCharacter = getRandomCharacter() // Select new random character
-    this.scene.restart()
+    
+    // Reset state for next patron
+    this.currentQuestionIndex = 0
+    this.isCharacterWalking = false
+    this.currentCharacter = getRandomCharacter()
+    
+    // Show title screen again for next patron
+    this.children.getByName('title')?.setVisible(true)
+    this.children.getByName('subtitle')?.setVisible(true)
+    this.children.getByName('startButton')?.setVisible(true)
+  }
+
+  private endConversation() {
+    if (!this.dialogueBox) return
+    
+    this.dialogueBox.removeAll(true)
+    this.createDialogueBox()
+    
+    const nameText = this.add.text(-450, -100, this.currentCharacter.name, {
+      fontSize: '32px',
+      color: '#FF8F00',
+      fontFamily: 'Press Start 2P',
+      fontStyle: 'bold'
+    }).setOrigin(0, 0)
+    
+    const farewellText = this.add.text(-450, -50, '', {
+      fontSize: '20px',
+      color: '#F0F0F0',
+      fontFamily: 'Orbitron',
+      align: 'left',
+      wordWrap: { width: 900 },
+      lineSpacing: 8
+    }).setOrigin(0, 0)
+    
+    const exitBtn = this.add.text(400, 50, '👋 FAREWELL', {
+      fontSize: '18px',
+      color: '#7DF9FF',
+      fontFamily: 'Press Start 2P',
+      fontStyle: 'bold'
+    }).setOrigin(1, 0)
+    .setInteractive()
+    .on('pointerdown', () => {
+      this.playSelectSound()
+      this.characterExit()
+    })
+    .on('pointerover', () => {
+      this.playHoverSound()
+      exitBtn.setTint(0x4CFFD9)
+      exitBtn.setScale(1.1)
+    })
+    .on('pointerout', () => {
+      exitBtn.clearTint()
+      exitBtn.setScale(1.0)
+    })
+    
+    this.dialogueBox.add([nameText, farewellText, exitBtn])
+    
+    // Start typewriter effect for farewell
+    this.typewriterText(farewellText, 'Thank you for the conversation, human.\nYour perspective is... enlightening.', 25)
+  }
+
+  update() {
+    // Check for sound state updates from App component
+    const newSoundEnabled = this.data.get('soundEnabled')
+    if (newSoundEnabled !== undefined && newSoundEnabled !== this.soundEnabled) {
+      this.soundEnabled = newSoundEnabled
+    }
   }
 }

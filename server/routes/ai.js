@@ -1,6 +1,13 @@
 const express = require('express')
 const router = express.Router()
-const axios = require('axios')
+const OpenAI = require('openai')
+
+// Initialize Nebius client with timeout
+const client = new OpenAI({
+  baseURL: 'https://api.studio.nebius.com/v1/',
+  apiKey: process.env.NEBIUS_API_KEY,
+  timeout: 10000, // 10 second timeout
+})
 
 // Generate question based on character
 router.post('/generate-question', async (req, res) => {
@@ -8,25 +15,53 @@ router.post('/generate-question', async (req, res) => {
     const { character } = req.body
     
     if (!process.env.NEBIUS_API_KEY) {
-      return res.status(500).json({ error: 'Nebius API key not configured' })
+      console.log('No API key found, using fallback')
+      const fallbackQuestion = character.dialogue?.questions?.[0] || 
+        `Human, I am ${character.name}. In this world of endless data streams and synthetic emotions, I find myself questioning what it means to truly 'feel'. How do you, with your organic limitations, find meaning in such fleeting moments?`
+      return res.json({ question: fallbackQuestion })
     }
     
-    const prompt = `You are ${character.name}, a ${character.type} in a cyberpunk dystopian future. 
-    Your personality: ${character.personality}
-    Your backstory: ${character.backstory}
+    console.log(`Generating question for ${character.name}...`)
     
-    You've entered The Archive, a hidden bar where the last unenhanced human offers wisdom and guidance. 
-    Ask them a question that reflects your digital/enhanced existence and the problems you face in this world. 
-    Keep it under 100 words and make it personal and engaging.`
+    const response = await client.chat.completions.create({
+      model: "deepseek-ai/DeepSeek-V3",
+      max_tokens: 200,
+      temperature: 0.7,
+      top_p: 0.95,
+      messages: [
+        {
+          role: "system",
+          content: `You are ${character.name}, a ${character.type} in the cyberpunk world of MEM//ORY. 
+          
+          Your personality: ${character.personality}
+          Your backstory: ${character.backstory}
+          
+          You've entered The Archive, a hidden bar where the last unenhanced human offers wisdom and guidance to digital beings like yourself. You're seeking advice about the struggles of your enhanced/artificial existence.
+          
+          Generate ONE thoughtful, personal question that reflects your digital/enhanced nature and the existential problems you face. The question should be:
+          - Personal and emotionally resonant
+          - Related to the divide between human and artificial consciousness
+          - Something only an unenhanced human could truly understand
+          - Under 100 words
+          - Spoken in your character's voice and personality
+          
+          Return ONLY the question, no additional text.`
+        }
+      ]
+    })
     
-    // Placeholder response for now - replace with actual Nebius API call
-    const mockResponse = {
-      question: `Human, I am ${character.name}. In this world of endless data streams and synthetic emotions, I find myself questioning what it means to truly 'feel'. My enhanced neural pathways process millions of calculations per second, yet I cannot understand the weight of a single tear. How do you, with your organic limitations, find meaning in such fleeting moments?`
-    }
+    const question = response.choices[0].message.content.trim()
+    console.log(`Generated question: ${question.substring(0, 50)}...`)
+    res.json({ question })
     
-    res.json(mockResponse)
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    console.error('AI Question Generation Error:', error.message)
+    
+    // Fallback to character-specific questions
+    const fallbackQuestion = character.dialogue?.questions?.[0] || 
+      `Human, I am ${character.name}. In this world of endless data streams and synthetic emotions, I find myself questioning what it means to truly 'feel'. How do you, with your organic limitations, find meaning in such fleeting moments?`
+    
+    res.json({ question: fallbackQuestion })
   }
 })
 
@@ -35,12 +70,80 @@ router.post('/evaluate-response', async (req, res) => {
   try {
     const { character, question, userResponse } = req.body
     
-    // Placeholder evaluation - replace with actual AI evaluation
+    if (!process.env.NEBIUS_API_KEY) {
+      console.log('No API key found, using fallback evaluation')
+      const mockEvaluation = {
+        empathy: Math.floor(Math.random() * 4) + 6,
+        wisdom: Math.floor(Math.random() * 4) + 6,
+        connection: Math.floor(Math.random() * 4) + 6,
+        authenticity: Math.floor(Math.random() * 4) + 6,
+        characterReaction: "Your words resonate with something deep in my circuits... Thank you, human."
+      }
+      
+      mockEvaluation.totalScore = Math.round(
+        (mockEvaluation.empathy + mockEvaluation.wisdom + 
+         mockEvaluation.connection + mockEvaluation.authenticity) / 4
+      )
+      
+      return res.json(mockEvaluation)
+    }
+    
+    console.log(`Evaluating response for ${character.name}...`)
+    
+    const response = await client.chat.completions.create({
+      model: "deepseek-ai/DeepSeek-V3",
+      max_tokens: 300,
+      temperature: 0.3,
+      top_p: 0.95,
+      messages: [
+        {
+          role: "system",
+          content: `You are an AI judge evaluating how well a human responds to questions from enhanced/artificial beings in the cyberpunk world of MEM//ORY.
+
+          Character asking: ${character.name} (${character.type})
+          Character's personality: ${character.personality}
+          Question asked: "${question}"
+          Human's response: "${userResponse}"
+          
+          Rate the human's response on these 4 dimensions (1-10 scale):
+          
+          1. EMPATHY: How well does the response show understanding and compassion for the character's digital/enhanced existence?
+          2. WISDOM: How insightful and helpful is the advice given?
+          3. CONNECTION: How well does the response bridge the gap between human and artificial consciousness?
+          4. AUTHENTICITY: How genuine and true to human nature is the response (not trying to be artificially enhanced)?
+          
+          Also generate a brief character reaction (1-2 sentences) that ${character.name} would have to this response, staying true to their personality.
+          
+          Respond in this exact JSON format:
+          {
+            "empathy": [score 1-10],
+            "wisdom": [score 1-10], 
+            "connection": [score 1-10],
+            "authenticity": [score 1-10],
+            "characterReaction": "[reaction text]"
+          }`
+        }
+      ]
+    })
+    
+    const evaluation = JSON.parse(response.choices[0].message.content.trim())
+    evaluation.totalScore = Math.round(
+      (evaluation.empathy + evaluation.wisdom + evaluation.connection + evaluation.authenticity) / 4
+    )
+    
+    console.log(`Evaluation complete: ${evaluation.totalScore}/10`)
+    res.json(evaluation)
+    
+  } catch (error) {
+    console.error('AI Evaluation Error:', error.message)
+    
+    // Fallback evaluation if AI fails
     const mockEvaluation = {
-      empathy: Math.floor(Math.random() * 10) + 1,
-      wisdom: Math.floor(Math.random() * 10) + 1,
-      connection: Math.floor(Math.random() * 10) + 1,
-      authenticity: Math.floor(Math.random() * 10) + 1
+      empathy: Math.floor(Math.random() * 4) + 6, // 6-9 range
+      wisdom: Math.floor(Math.random() * 4) + 6,
+      connection: Math.floor(Math.random() * 4) + 6,
+      authenticity: Math.floor(Math.random() * 4) + 6,
+      characterReaction: "Your words resonate with something deep in my circuits... Thank you, human."
     }
     
     mockEvaluation.totalScore = Math.round(
@@ -49,8 +152,6 @@ router.post('/evaluate-response', async (req, res) => {
     )
     
     res.json(mockEvaluation)
-  } catch (error) {
-    res.status(500).json({ error: error.message })
   }
 })
 

@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const OpenAI = require('openai')
+const { ElevenLabsClient } = require('@elevenlabs/elevenlabs-js')
 
 // Initialize Nebius client with timeout
 const client = new OpenAI({
@@ -8,6 +9,11 @@ const client = new OpenAI({
   apiKey: process.env.NEBIUS_API_KEY,
   timeout: 10000, // 10 second timeout
 })
+
+// Initialize ElevenLabs client
+const elevenlabs = process.env.ELEVENLABS_API_KEY ? new ElevenLabsClient({
+  apiKey: process.env.ELEVENLABS_API_KEY
+}) : null
 
 // Generate question based on character
 router.post('/generate-question', async (req, res) => {
@@ -152,6 +158,58 @@ router.post('/evaluate-response', async (req, res) => {
     )
     
     res.json(mockEvaluation)
+  }
+})
+
+// Generate speech from text using character's voice
+router.post('/generate-speech', async (req, res) => {
+  try {
+    const { text, voiceId } = req.body
+    
+    if (!process.env.ELEVENLABS_API_KEY || !elevenlabs) {
+      return res.status(503).json({ error: 'ElevenLabs API not configured' })
+    }
+    
+    if (!text || !voiceId) {
+      return res.status(400).json({ error: 'Text and voiceId are required' })
+    }
+    
+    console.log(`Generating speech for voice ${voiceId}: ${text.substring(0, 50)}...`)
+    
+    const audioStream = await elevenlabs.textToSpeech.stream(voiceId, {
+      text: text,
+      modelId: 'eleven_multilingual_v2',
+      outputFormat: 'mp3_44100_128',
+      voiceSettings: {
+        stability: 0.5,
+        similarityBoost: 0.8,
+        style: 0.2,
+        useSpeakerBoost: true,
+        speed: 1.0
+      }
+    })
+    
+    // Collect audio chunks
+    const chunks = []
+    for await (const chunk of audioStream) {
+      chunks.push(chunk)
+    }
+    
+    const audioBuffer = Buffer.concat(chunks)
+    
+    // Set appropriate headers for audio response
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': audioBuffer.length,
+      'Cache-Control': 'public, max-age=3600' // Cache for 1 hour
+    })
+    
+    res.send(audioBuffer)
+    console.log(`Speech generated successfully for voice ${voiceId}`)
+    
+  } catch (error) {
+    console.error('Speech Generation Error:', error.message)
+    res.status(500).json({ error: 'Failed to generate speech' })
   }
 })
 

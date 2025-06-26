@@ -100,21 +100,35 @@ export class BarScene extends Scene {
     // Create animations for all characters
     this.createAllAnimations()
     
-    // Add title text with pixel art styling - Updated to MEM//ORY
+    // Add title text with cyberpunk styling - Updated to MEM//ORY
     const title = this.add.text(960, 200, 'MEM//ORY', {
-      fontSize: '72px',
+      fontSize: '84px',
       color: '#00ffff',
-      fontFamily: 'monospace',
+      fontFamily: 'Audiowide, monospace',
       stroke: '#000000',
-      strokeThickness: 4
+      strokeThickness: 6,
+      shadow: {
+        offsetX: 4,
+        offsetY: 4,
+        color: '#ff00ff',
+        blur: 8,
+        fill: true
+      }
     }).setOrigin(0.5).setName('title')
     
     const subtitle = this.add.text(960, 300, 'Last Human in the Sector', {
-      fontSize: '28px',
+      fontSize: '32px',
       color: '#ffffff',
-      fontFamily: 'monospace',
+      fontFamily: 'Electrolize, monospace',
       stroke: '#000000',
-      strokeThickness: 2
+      strokeThickness: 3,
+      shadow: {
+        offsetX: 2,
+        offsetY: 2,
+        color: '#00ffff',
+        blur: 4,
+        fill: true
+      }
     }).setOrigin(0.5).setName('subtitle')
     
     const startButton = this.add.text(960, 600, '> PRESS TO BEGIN <', {
@@ -315,6 +329,11 @@ export class BarScene extends Scene {
     
     // Play dialogue sound when starting to type
     this.playDialogueSound(fullText)
+    
+    // Generate and play character voice if sound is enabled
+    if (this.soundEnabled && this.currentCharacter.voiceId) {
+      this.playCharacterVoice(fullText)
+    }
     
     textObject.setText('')
     let currentIndex = 0
@@ -744,6 +763,52 @@ export class BarScene extends Scene {
     
     // Start typewriter effect for farewell
     this.typewriterText(farewellText, 'Thank you for the conversation, human.\nYour perspective is... enlightening.', 25)
+  }
+
+  private async playCharacterVoice(text: string) {
+    if (!this.soundEnabled || !this.currentCharacter.voiceId) {
+      return
+    }
+    
+    try {
+      console.log(`Generating voice for ${this.currentCharacter.name}: ${text.substring(0, 30)}...`)
+      
+      const response = await fetch('/api/ai/generate-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          text: text,
+          voiceId: this.currentCharacter.voiceId 
+        })
+      })
+      
+      if (response.ok) {
+        const audioBlob = await response.blob()
+        const audioUrl = URL.createObjectURL(audioBlob)
+        
+        // Create and play audio
+        const audio = new Audio(audioUrl)
+        audio.volume = 0.7
+        
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl)
+        }
+        
+        audio.onerror = (error) => {
+          console.error('Error playing character voice:', error)
+          URL.revokeObjectURL(audioUrl)
+        }
+        
+        await audio.play()
+        console.log(`Voice played for ${this.currentCharacter.name}`)
+        
+      } else {
+        console.warn('Failed to generate speech:', response.status)
+      }
+      
+    } catch (error) {
+      console.error('Error generating character voice:', error)
+    }
   }
 
   update() {

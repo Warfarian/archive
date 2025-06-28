@@ -1,4 +1,4 @@
-# Archive - Cyberpunk Bar Game
+# MEM//ORY - Cyberpunk Bar Game
 
 A cyberpunk-themed interactive bar game built with React, Phaser, and Node.js.
 
